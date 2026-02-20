@@ -4,7 +4,9 @@
   "description": "Telegram bot for logging financial activity on the go — syncs to a shared Supabase database powering Ledgr 📱💸📊",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "start": "node dist/bot/index.js",
+    "dev": "ts-node src/bot/index.ts"
   },
   "repository": {
     "type": "git",
