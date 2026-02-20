@@ -1,0 +1,33 @@
+{
+  "name": "ledgr-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for logging financial activity on the go — syncs to a shared Supabase database powering Ledgr 📱💸📊",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/bot/index.js",
+    "dev": "ts-node src/bot/index.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeffery-prod/ledgr-bot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/jeffery-prod/ledgr-bot/issues"
+  },
+  "homepage": "https://github.com/jeffery-prod/ledgr-bot#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
+    "grammy": "^1.40.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "dotenv": "^17.3.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
