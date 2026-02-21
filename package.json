@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/jeffery-prod/ledgr-bot#readme",
   "dependencies": {
+    "@grammyjs/conversations": "^2.1.1",
     "@supabase/supabase-js": "^2.97.0",
     "grammy": "^1.40.0"
   },
