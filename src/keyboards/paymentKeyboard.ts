@@ -1,12 +1,18 @@
 import { InlineKeyboard } from 'grammy';
+import { getAccountsByType } from '../database/queries';
 
-export const paymentKeyboard = new InlineKeyboard()
-  .text('Amex Delta Skymiles', 'pay_amex_delta').row()
-  .text('Amazon Prime Visa', 'pay_amazon_visa').row()
-  .text('Wells Fargo Debit', 'pay_wf_debit').row()
-  .text('Capital One Quicksilver', 'pay_cap1_quicksilver').row()
-  .text('Citi DoubleCash', 'pay_citi_doublecash').row()
-  .text('Wells Fargo Active Cash', 'pay_wf_active_cash').row()
-  .text('Amex Hilton Honors', 'pay_amex_hilton').row()
-  .text('Cash', 'pay_cash').row()
+export const paymentTypeKeyboard = new InlineKeyboard()
+  .text('Credit', 'pay_type_credit').row()
+  .text('Debit', 'pay_type_debit').row()
+  .text('Cash', 'pay_type_cash').row()
   .text('Cancel', 'cancel');
+
+export async function buildCreditKeyboard(): Promise<InlineKeyboard> {
+  const accounts = await getAccountsByType('CREDIT');
+  const keyboard = new InlineKeyboard();
+  for (const account of accounts) {
+    keyboard.text(account.name, `credit_${account.id}`).row();
+  }
+  keyboard.text('Cancel', 'cancel');
+  return keyboard;
+}

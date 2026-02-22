@@ -1,5 +1,16 @@
 import { supabase } from './supabase';
 
+export async function getAccountsByType(type: string): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('id, name')
+    .eq('account_type', type)
+    .eq('is_active', true)
+    .order('name');
+  if (error) { console.error('getAccountsByType error:', error.message); return []; }
+  return data;
+}
+
 export async function getExpenseTypeId(name: string): Promise<string | null> {
   const { data, error } = await supabase
     .from('expense_types')

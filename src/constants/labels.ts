@@ -29,13 +29,13 @@ export const categoryLabels: Record<string, string> = {
 };
 
 export const paymentLabels: Record<string, string> = {
-  pay_amex_delta: 'Amex Delta Skymiles',
-  pay_amazon_visa: 'Amazon Prime Visa',
+  pay_amex_delta: 'Delta Skymiles',
+  pay_amazon_visa: 'Amazon Prime',
   pay_wf_debit: 'Wells Fargo Debit',
-  pay_cap1_quicksilver: 'Capital One Quicksilver',
-  pay_citi_doublecash: 'Citi DoubleCash',
-  pay_wf_active_cash: 'Wells Fargo Active Cash',
-  pay_amex_hilton: 'Amex Hilton Honors',
+  pay_cap1_quicksilver: 'Quicksilver',
+  pay_citi_doublecash: 'DoubleCash',
+  pay_wf_active_cash: 'Active Cash',
+  pay_amex_hilton: 'Hilton Honors',
   pay_cash: 'Cash',
 };
 

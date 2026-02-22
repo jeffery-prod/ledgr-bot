@@ -3,7 +3,7 @@ import { conversations, createConversation } from '@grammyjs/conversations';
 import * as dotenv from 'dotenv';
 import type { MyContext } from '../types/context';
 import { mainKeyboard } from '../keyboards/mainKeyboard';
-import { addTransaction } from '../conversations/addTransaction';
+import { addExpense } from '../conversations/addExpense';
 import { addIncome } from '../conversations/addIncome';
 import { addTransfer } from '../conversations/addTransfer';
 
@@ -20,7 +20,7 @@ bot.use(async (ctx, next) => {
 });
 
 bot.use(conversations());
-bot.use(createConversation(addTransaction));
+bot.use(createConversation(addExpense));
 bot.use(createConversation(addIncome));
 bot.use(createConversation(addTransfer));
 
@@ -31,9 +31,9 @@ bot.command('start', async (ctx) => {
   });
 });
 
-bot.callbackQuery('menu_add', async (ctx) => {
+bot.callbackQuery('menu_expense', async (ctx) => {
   await ctx.answerCallbackQuery();
-  await ctx.conversation.enter('addTransaction');
+  await ctx.conversation.enter('addExpense');
 });
 
 bot.callbackQuery('menu_income', async (ctx) => {
