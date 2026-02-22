@@ -4,9 +4,10 @@ import { categoryKeyboard } from '../keyboards/categoryKeyboard';
 import { paymentKeyboard } from '../keyboards/paymentKeyboard';
 import { confirmKeyboard } from '../keyboards/confirmKeyboard';
 import { categoryLabels, paymentLabels } from '../constants/labels';
+import { parseDate } from '../utils/parseDate';
+import { getExpenseTypeId, getAccountId, saveExpense } from '../database/queries';
 
 export async function addTransaction(conversation: Conversation<MyContext>, ctx: MyContext) {
-  // Step 1: Category
   await ctx.reply('What category is this expense?', { reply_markup: categoryKeyboard });
   const catCtx = await conversation.waitForCallbackQuery(/^cat_|^cancel$/);
   await catCtx.answerCallbackQuery();
@@ -16,7 +17,6 @@ export async function addTransaction(conversation: Conversation<MyContext>, ctx:
   }
   const category = categoryLabels[catCtx.callbackQuery.data];
 
-  // Step 2: Payment method
   await catCtx.editMessageText(`Category: ${category}\n\nWhich payment method?`, { reply_markup: paymentKeyboard });
   const payCtx = await conversation.waitForCallbackQuery(/^pay_|^cancel$/);
   await payCtx.answerCallbackQuery();
@@ -26,27 +26,48 @@ export async function addTransaction(conversation: Conversation<MyContext>, ctx:
   }
   const payment = paymentLabels[payCtx.callbackQuery.data];
 
-  // Step 3: Amount
   await payCtx.editMessageText(`Category: ${category}\nPayment: ${payment}\n\nEnter the amount:`);
   const amountCtx = await conversation.waitFor('message:text');
   const amount = parseFloat(amountCtx.message.text);
-
   if (isNaN(amount) || amount <= 0) {
     await amountCtx.reply('Invalid amount. Please try again.');
     return;
   }
 
-  // Step 4: Confirmation
-  await amountCtx.reply(
-    `Confirm transaction?\n\n━━━━━━━━━━━━━━━\nExpense\nCategory: ${category}\nPayment: ${payment}\nAmount: $${amount.toFixed(2)}\n━━━━━━━━━━━━━━━`,
+  await amountCtx.reply('Enter the date:\n(today, yesterday, or MM/DD/YYYY)');
+  const dateCtx = await conversation.waitFor('message:text');
+  const transactionDate = parseDate(dateCtx.message.text);
+  if (!transactionDate) {
+    await dateCtx.reply('Invalid date. Please try again.');
+    return;
+  }
+
+  await dateCtx.reply('Any notes? (type a note or "skip")');
+  const notesCtx = await conversation.waitFor('message:text');
+  const notes = notesCtx.message.text.toLowerCase() === 'skip' ? null : notesCtx.message.text;
+
+  await notesCtx.reply(
+    `Confirm transaction?\n\n━━━━━━━━━━━━━━━\nExpense\nCategory: ${category}\nPayment: ${payment}\nAmount: $${amount.toFixed(2)}\nDate: ${transactionDate}${notes ? `\nNotes: ${notes}` : ''}\n━━━━━━━━━━━━━━━`,
     { reply_markup: confirmKeyboard }
   );
   const confirmCtx = await conversation.waitForCallbackQuery(['confirm', 'cancel']);
   await confirmCtx.answerCallbackQuery();
 
   if (confirmCtx.callbackQuery.data === 'confirm') {
-    // TODO: Save to DB
-    await confirmCtx.editMessageText(`Transaction saved!\n\nCategory: ${category} — $${amount.toFixed(2)}\nPayment: ${payment}`);
+    const expenseTypeId = await getExpenseTypeId(category);
+    const accountId = await getAccountId(payment);
+
+    if (!expenseTypeId || !accountId) {
+      await confirmCtx.editMessageText('Something went wrong. Please try again.');
+      return;
+    }
+
+    const saved = await saveExpense(expenseTypeId, accountId, amount, transactionDate, notes);
+    if (saved) {
+      await confirmCtx.editMessageText(`Transaction saved!\n\nCategory: ${category} — $${amount.toFixed(2)}\nPayment: ${payment}\nDate: ${transactionDate}`);
+    } else {
+      await confirmCtx.editMessageText('Failed to save. Please try again.');
+    }
   } else {
     await confirmCtx.editMessageText('Cancelled.');
   }
