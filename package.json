@@ -6,7 +6,9 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/bot/index.js",
-    "dev": "ts-node src/bot/index.ts"
+    "dev": "ts-node src/bot/index.ts",
+    "webhook:set": "ts-node scripts/setWebhook.ts",
+    "webhook:delete": "ts-node scripts/deleteWebhook.ts"
   },
   "repository": {
     "type": "git",
