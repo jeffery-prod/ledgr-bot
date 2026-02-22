@@ -25,7 +25,6 @@ export const categoryLabels: Record<string, string> = {
   cat_rideshare: 'Rideshare',
   cat_savings: 'Savings',
   cat_shopping: 'Shopping',
-  cat_subscriptions: 'Subscriptions',
   cat_taxes: 'Taxes',
   cat_travel: 'Travel',
   cat_water: 'Water',
