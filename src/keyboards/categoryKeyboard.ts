@@ -14,6 +14,6 @@ export const categoryKeyboard = new InlineKeyboard()
   .text('Phone', 'cat_phone').text('Public Transit', 'cat_public_transit').row()
   .text('Rent', 'cat_rent').text('Rideshare', 'cat_rideshare').row()
   .text('Savings', 'cat_savings').text('Shopping', 'cat_shopping').row()
-  .text('Subscriptions', 'cat_subscriptions').text('Taxes', 'cat_taxes').row()
-  .text('Travel', 'cat_travel').text('Water', 'cat_water').row()
+  .text('Taxes', 'cat_taxes').text('Travel', 'cat_travel').row()
+  .text('Water', 'cat_water').row()
   .text('Cancel', 'cancel');
