@@ -26,7 +26,7 @@ bot.use(createConversation(addTransfer));
 
 bot.command('start', async (ctx) => {
   await ctx.conversation.exit();
-  await ctx.reply('Welcome to Ledgr!', {
+  await ctx.reply('What would you like to do?', {
     reply_markup: mainKeyboard,
   });
 });
@@ -44,11 +44,6 @@ bot.callbackQuery('menu_income', async (ctx) => {
 bot.callbackQuery('menu_transfer', async (ctx) => {
   await ctx.answerCallbackQuery();
   await ctx.conversation.enter('addTransfer');
-});
-
-bot.callbackQuery('menu_summary', async (ctx) => {
-  await ctx.answerCallbackQuery();
-  await ctx.reply('Coming soon..');
 });
 
 bot.callbackQuery('menu_cancel', async (ctx) => {

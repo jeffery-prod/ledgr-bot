@@ -1,7 +1,6 @@
 export const categoryLabels: Record<string, string> = {
   cat_alcohol: 'Alcohol',
   cat_clothing: 'Clothing',
-  cat_debt: 'Debt',
   cat_education: 'Education',
   cat_electric: 'Electric',
   cat_electronics: 'Electronics',
@@ -23,7 +22,6 @@ export const categoryLabels: Record<string, string> = {
   cat_public_transit: 'Public Transit',
   cat_rent: 'Rent',
   cat_rideshare: 'Rideshare',
-  cat_savings: 'Savings',
   cat_shopping: 'Shopping',
   cat_taxes: 'Taxes',
   cat_travel: 'Travel',
@@ -54,6 +52,7 @@ export const accountLabels: Record<string, string> = {
   account_checking: 'Checking',
   account_savings: 'Savings',
   account_investment: 'Investment',
+  account_cash: 'Cash',
 };
 
 export const debtLabels: Record<string, string> = {
