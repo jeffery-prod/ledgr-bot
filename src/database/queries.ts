@@ -1,16 +1,5 @@
 import { supabase } from './supabase';
 
-export async function getAccountsByType(type: string): Promise<{ id: string; name: string }[]> {
-  const { data, error } = await supabase
-    .from('accounts')
-    .select('id, name')
-    .eq('account_type', type)
-    .eq('is_active', true)
-    .order('name');
-  if (error) { console.error('getAccountsByType error:', error.message); return []; }
-  return data;
-}
-
 export async function getExpenseTypeId(name: string): Promise<string | null> {
   const { data, error } = await supabase
     .from('expense_types')
@@ -48,12 +37,15 @@ export async function saveExpense(
   transactionDate: string,
   notes: string | null
 ): Promise<boolean> {
+  const now = new Date().toISOString();
   const { error } = await supabase.from('expenses').insert({
     expense_type_id: expenseTypeId,
     account_id: accountId,
     amount,
     transaction_date: transactionDate,
     notes,
+    created_at: now,
+    updated_at: now,
   });
   if (error) { console.error('saveExpense error:', error.message); return false; }
   return true;
@@ -66,12 +58,15 @@ export async function saveIncome(
   transactionDate: string,
   notes: string | null
 ): Promise<boolean> {
+  const now = new Date().toISOString();
   const { error } = await supabase.from('income').insert({
     income_type_id: incomeTypeId,
     account_id: accountId,
     amount,
     transaction_date: transactionDate,
     notes,
+    created_at: now,
+    updated_at: now,
   });
   if (error) { console.error('saveIncome error:', error.message); return false; }
   return true;
@@ -90,6 +85,7 @@ export async function saveTransfer(
     amount,
     transaction_date: transactionDate,
     notes,
+    created_at: new Date().toISOString(),
   });
   if (error) { console.error('saveTransfer error:', error.message); return false; }
   return true;
