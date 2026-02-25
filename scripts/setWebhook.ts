@@ -3,15 +3,16 @@ dotenv.config();
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const vercelUrl = process.env.VERCEL_URL;
+const secretToken = process.env.SECRET_TOKEN;
 
-if (!token || !vercelUrl) {
-  console.error('Missing TELEGRAM_BOT_TOKEN or VERCEL_URL in .env');
+if (!token || !vercelUrl || !secretToken) {
+  console.error('Missing TELEGRAM_BOT_TOKEN, VERCEL_URL, or SECRET_TOKEN in .env');
   process.exit(1);
 }
 
 const webhookUrl = `${vercelUrl}/api/bot`;
 
-fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${webhookUrl}`)
+fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${webhookUrl}&secret_token=${secretToken}`)
   .then(res => res.json())
   .then((data: any) => {
     if (data.ok) {
