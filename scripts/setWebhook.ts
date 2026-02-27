@@ -10,7 +10,7 @@ if (!token || !vercelUrl || !secretToken) {
   process.exit(1);
 }
 
-const webhookUrl = `${vercelUrl}/api/bot`;
+const webhookUrl = `${vercelUrl.replace(/\/$/, '')}/api/bot`;
 
 fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${webhookUrl}&secret_token=${secretToken}`)
   .then(res => res.json())
