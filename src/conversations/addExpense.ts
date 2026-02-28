@@ -1,173 +1,146 @@
 import type { Conversation } from '@grammyjs/conversations';
 import type { MyContext } from '../types/context';
-import { categoryKeyboard } from '../keyboards/categoryKeyboard';
-import { paymentTypeKeyboard, checkingKeyboard, creditKeyboard } from '../keyboards/paymentKeyboard';
 import { confirmKeyboard } from '../keyboards/confirmKeyboard';
 import { notesKeyboard } from '../keyboards/notesKeyboard';
 import { dateKeyboard } from '../keyboards/dateKeyboard';
-import { CATEGORY_CALLBACK_MAP } from '../constants/categories';
-import { ACCOUNTS, CHECKING_CALLBACK_MAP, CREDIT_CALLBACK_MAP } from '../constants/accounts';
-import { CATEGORY_LABELS, CHECKING_LABELS, CREDIT_LABELS } from '../constants/labels';
+import { UUID_REGEX, buildAccountTypeKeyboard, buildAccountKeyboard, buildExpenseTypeKeyboard } from '../keyboards/dynamicKeyboards';
 import { parseDate } from '../utils/parseDate';
 import { formatDisplayDate, formatLoggedAt, escapeMarkdown } from '../utils/formatDate';
-import { getExpenseTypeId, getAccountId, saveExpense } from '../database/queries';
+import { buildMessage } from '../utils/formatMessage';
+import { fetchAccountTypes, fetchAccountsByType, fetchExpenseTypes, saveExpense } from '../database/queries';
+import { waitOrCancel } from '../utils/conversation';
 
-export async function addExpense(conversation: Conversation<MyContext, MyContext>, ctx: MyContext) {
-  await ctx.reply('How did you pay?', { reply_markup: paymentTypeKeyboard });
-  const payTypeCtx = await conversation.waitForCallbackQuery(/^pay_type_|^cancel$/);
-  await payTypeCtx.answerCallbackQuery();
-  if (payTypeCtx.callbackQuery.data === 'cancel') {
-    await payTypeCtx.editMessageText('Cancelled.');
-    return;
-  }
+type Conv = Conversation<MyContext, MyContext>;
 
-  let accountName: string;
-  let accountLabel: string;
-  let accountType: string;
+export async function addExpense(conversation: Conv, ctx: MyContext) {
+  const accountType = await pickAccountType(conversation, ctx);
+  if (!accountType) return;
 
-  const payType = payTypeCtx.callbackQuery.data;
-  const payTypeLabel = payType === 'pay_type_credit' ? '💳 Credit'
-    : payType === 'pay_type_debit' ? '🏦 Debit'
-    : '💵 Cash';
-  await payTypeCtx.editMessageText(`How did you pay? → ${payTypeLabel}`);
+  const account = await pickAccount(conversation, ctx, accountType.id);
+  if (!account) return;
 
-  if (payType === 'pay_type_credit') {
-    await ctx.reply('Which credit card?', { reply_markup: creditKeyboard });
-    const cardCtx = await conversation.waitForCallbackQuery(/^credit_|^cancel$/);
-    await cardCtx.answerCallbackQuery();
-    if (cardCtx.callbackQuery.data === 'cancel') {
-      await cardCtx.editMessageText('Cancelled.');
-      return;
-    }
-    accountName = CREDIT_CALLBACK_MAP[cardCtx.callbackQuery.data];
-    accountLabel = CREDIT_LABELS[cardCtx.callbackQuery.data];
-    accountType = 'CREDIT';
-    await cardCtx.editMessageText(`Which credit card? → ${accountLabel}`);
-  } else if (payType === 'pay_type_debit') {
-    await ctx.reply('Which account?', { reply_markup: checkingKeyboard });
-    const debitCtx = await conversation.waitForCallbackQuery(/^debit_|^cancel$/);
-    await debitCtx.answerCallbackQuery();
-    if (debitCtx.callbackQuery.data === 'cancel') {
-      await debitCtx.editMessageText('Cancelled.');
-      return;
-    }
-    accountName = CHECKING_CALLBACK_MAP[debitCtx.callbackQuery.data];
-    accountLabel = CHECKING_LABELS[debitCtx.callbackQuery.data];
-    accountType = 'CHECKING';
-    await debitCtx.editMessageText(`Which account? → ${accountLabel}`);
+  const expenseType = await pickExpenseType(conversation, ctx);
+  if (!expenseType) return;
+
+  const title = await enterTitle(conversation, ctx);
+  const amount = await enterAmount(conversation, ctx);
+
+  const transactionDate = await pickDate(conversation, ctx);
+  if (!transactionDate) return;
+
+  const notesResult = await enterNotes(conversation, ctx);
+  if (!notesResult) return;
+  const { notes } = notesResult;
+
+  const displayDate = formatDisplayDate(transactionDate);
+  const receiptRows = [
+    escapeMarkdown(account.label),
+    escapeMarkdown(expenseType.label),
+    `💰 \`$${amount.toFixed(2)}\``,
+    `📅 ${displayDate}`,
+  ];
+
+  const receipt = buildMessage({ header: 'EXPENSE', headerEmoji: '🧾', title, rows: receiptRows, notes });
+  await ctx.reply(receipt, { reply_markup: confirmKeyboard, parse_mode: 'Markdown' });
+  const confirmCtx = await waitOrCancel(conversation, ['confirm', 'cancel']);
+  if (!confirmCtx) return;
+
+  const saved = await saveExpense(expenseType.id, account.id, title, amount, transactionDate, notes);
+  if (saved) {
+    const savedReceipt = buildMessage({ header: 'EXPENSE', headerEmoji: '🧾', title, rows: receiptRows, notes, loggedAt: formatLoggedAt() });
+    await ctx.reply(`✅ *Expense saved.*\n\n${savedReceipt}`, { parse_mode: 'Markdown' });
   } else {
-    accountName = ACCOUNTS.CASH;
-    accountLabel = 'Cash';
-    accountType = 'CASH';
+    await ctx.reply('Failed to save. Please try again.');
   }
+}
 
-  await ctx.reply('What category is this expense?', { reply_markup: categoryKeyboard });
-  const catCtx = await conversation.waitForCallbackQuery(/^cat_|^cancel$/);
-  await catCtx.answerCallbackQuery();
-  if (catCtx.callbackQuery.data === 'cancel') {
-    await catCtx.editMessageText('Cancelled.');
-    return;
-  }
-  const categoryName = CATEGORY_CALLBACK_MAP[catCtx.callbackQuery.data];
-  const categoryLabel = CATEGORY_LABELS[catCtx.callbackQuery.data];
-  await catCtx.editMessageText(`What category? → ${categoryLabel}`);
+async function pickAccountType(conversation: Conv, ctx: MyContext): Promise<{ id: string; label: string } | null> {
+  const accountTypes = await conversation.external(() => fetchAccountTypes('expense'));
+  await ctx.reply('How did you pay?', { reply_markup: buildAccountTypeKeyboard(accountTypes) });
+  const typeCtx = await waitOrCancel(conversation, UUID_REGEX);
+  if (!typeCtx) return null;
+  const id = typeCtx.callbackQuery.data;
+  const label = accountTypes.find(t => t.id === id)?.display_name ?? id;
+  await typeCtx.editMessageText(`How did you pay? → ${label}`);
+  return { id, label };
+}
 
+async function pickAccount(conversation: Conv, ctx: MyContext, accountTypeId: string): Promise<{ id: string; label: string } | null> {
+  const accounts = await conversation.external(() => fetchAccountsByType(accountTypeId));
+  await ctx.reply('Which account?', { reply_markup: buildAccountKeyboard(accounts) });
+  const acctCtx = await waitOrCancel(conversation, UUID_REGEX);
+  if (!acctCtx) return null;
+  const id = acctCtx.callbackQuery.data;
+  const acct = accounts.find(a => a.id === id);
+  const label = acct ? (acct.emoji ? `${acct.emoji} ${acct.display_name ?? acct.name}` : (acct.display_name ?? acct.name)) : id;
+  await acctCtx.editMessageText(`Which account? → ${label}`);
+  return { id, label };
+}
+
+async function pickExpenseType(conversation: Conv, ctx: MyContext): Promise<{ id: string; label: string } | null> {
+  const expenseTypes = await conversation.external(() => fetchExpenseTypes());
+  await ctx.reply('What category is this expense?', { reply_markup: buildExpenseTypeKeyboard(expenseTypes) });
+  const catCtx = await waitOrCancel(conversation, UUID_REGEX);
+  if (!catCtx) return null;
+  const id = catCtx.callbackQuery.data;
+  const expType = expenseTypes.find(t => t.id === id);
+  const label = expType ? (expType.emoji ? `${expType.emoji} ${expType.display_name}` : expType.display_name) : id;
+  await catCtx.editMessageText(`What category? → ${label}`);
+  return { id, label };
+}
+
+async function enterTitle(conversation: Conv, ctx: MyContext): Promise<string> {
+  await ctx.reply('Enter a title for this expense:');
+  const titleCtx = await conversation.waitFor('message:text');
+  return titleCtx.message.text;
+}
+
+async function enterAmount(conversation: Conv, ctx: MyContext): Promise<number> {
   await ctx.reply('Enter the amount:');
-  let amount = 0;
   while (true) {
     const amountCtx = await conversation.waitFor('message:text');
-    amount = parseFloat(amountCtx.message.text);
-    if (!isNaN(amount) && amount > 0) {
-      await amountCtx.reply('Select a date:', { reply_markup: dateKeyboard });
-      break;
-    }
+    const amount = parseFloat(amountCtx.message.text);
+    if (!isNaN(amount) && amount > 0) return amount;
     await amountCtx.reply('Invalid amount. Please enter a valid number:');
   }
+}
 
-  const dateSelCtx = await conversation.waitForCallbackQuery(/^date_|^cancel$/);
-  await dateSelCtx.answerCallbackQuery();
-  if (dateSelCtx.callbackQuery.data === 'cancel') {
-    await dateSelCtx.editMessageText('Cancelled.');
-    return;
-  }
+async function pickDate(conversation: Conv, ctx: MyContext): Promise<string | null> {
+  await ctx.reply('Select a date:', { reply_markup: dateKeyboard });
+  const dateSelCtx = await waitOrCancel(conversation, /^date_|^cancel$/);
+  if (!dateSelCtx) return null;
 
-  let transactionDate: string | null = null;
   if (dateSelCtx.callbackQuery.data === 'date_today') {
-    transactionDate = parseDate('today');
-    await dateSelCtx.editMessageText(`Select a date: → Today`);
-  } else if (dateSelCtx.callbackQuery.data === 'date_yesterday') {
-    transactionDate = parseDate('yesterday');
-    await dateSelCtx.editMessageText(`Select a date: → Yesterday`);
-  } else {
-    await dateSelCtx.editMessageText('Select a date: → Custom');
-    await ctx.reply('Enter the date (MM/DD/YYYY):');
-    while (true) {
-      const dateTextCtx = await conversation.waitFor('message:text');
-      transactionDate = parseDate(dateTextCtx.message.text);
-      if (transactionDate) break;
-      await dateTextCtx.reply('Invalid date. Please enter a valid date (MM/DD/YYYY):');
-    }
+    await dateSelCtx.editMessageText('Select a date: → Today');
+    return parseDate('today');
+  }
+  if (dateSelCtx.callbackQuery.data === 'date_yesterday') {
+    await dateSelCtx.editMessageText('Select a date: → Yesterday');
+    return parseDate('yesterday');
   }
 
-  await ctx.reply('Any notes?', { reply_markup: notesKeyboard });
-  const notesSelCtx = await conversation.waitForCallbackQuery(/^notes_|^cancel$/);
-  await notesSelCtx.answerCallbackQuery();
-  if (notesSelCtx.callbackQuery.data === 'cancel') {
-    await notesSelCtx.editMessageText('Cancelled.');
-    return;
+  await dateSelCtx.editMessageText('Select a date: → Custom');
+  await ctx.reply('Enter the date (MM/DD/YYYY):');
+  while (true) {
+    const dateTextCtx = await conversation.waitFor('message:text');
+    const transactionDate = parseDate(dateTextCtx.message.text);
+    if (transactionDate) return transactionDate;
+    await dateTextCtx.reply('Invalid date. Please enter a valid date (MM/DD/YYYY):');
   }
-  let notes: string | null = null;
+}
+
+async function enterNotes(conversation: Conv, ctx: MyContext): Promise<{ notes: string | null } | null> {
+  await ctx.reply('Any notes?', { reply_markup: notesKeyboard });
+  const notesSelCtx = await waitOrCancel(conversation, /^notes_|^cancel$/);
+  if (!notesSelCtx) return null;
+
   if (notesSelCtx.callbackQuery.data === 'notes_yes') {
     await notesSelCtx.editMessageText('Any notes? → Yes');
     await ctx.reply('Enter your note:');
     const noteTextCtx = await conversation.waitFor('message:text');
-    notes = noteTextCtx.message.text;
-  } else {
-    await notesSelCtx.editMessageText('Any notes? → No');
+    return { notes: noteTextCtx.message.text };
   }
 
-  const displayDate = formatDisplayDate(transactionDate!);
-  const confirmText = [
-    `*EXPENSE*`,
-    ``,
-    `*Payment*  : ${escapeMarkdown(accountLabel)} (${accountType})`,
-    `*Category* : ${escapeMarkdown(categoryLabel)}`,
-    `*Amount*   : \`$${amount.toFixed(2)}\``,
-    `*Date*     : ${displayDate}`,
-    ...(notes ? [`*Notes*    : ${escapeMarkdown(notes)}`] : []),
-  ].join('\n');
-
-  await ctx.reply(confirmText, { reply_markup: confirmKeyboard, parse_mode: 'Markdown' });
-  const confirmCtx = await conversation.waitForCallbackQuery(['confirm', 'cancel']);
-  await confirmCtx.answerCallbackQuery();
-
-  if (confirmCtx.callbackQuery.data === 'confirm') {
-    const expenseTypeId = await getExpenseTypeId(categoryName);
-    const accountId = await getAccountId(accountName);
-
-    if (!expenseTypeId || !accountId) {
-      await ctx.reply('Something went wrong. Please try again.');
-      return;
-    }
-
-    const saved = await saveExpense(expenseTypeId, accountId, amount, transactionDate!, notes);
-    if (saved) {
-      const loggedAt = formatLoggedAt();
-      const savedText = [
-        `*EXPENSE*`,
-        ``,
-        `*Payment*  : ${escapeMarkdown(accountLabel)} (${accountType})`,
-        `*Category* : ${escapeMarkdown(categoryLabel)}`,
-        `*Amount*   : \`$${amount.toFixed(2)}\``,
-        `*Date*     : ${displayDate}`,
-        ...(notes ? [`*Notes*    : ${escapeMarkdown(notes)}`] : []),
-        `*Logged*   : ${loggedAt}`,
-      ].join('\n');
-      await ctx.reply(`✅ *Expense saved.*\n\n${savedText}`, { parse_mode: 'Markdown' });
-    } else {
-      await ctx.reply('Failed to save. Please try again.');
-    }
-  } else {
-    await confirmCtx.editMessageText('Cancelled.');
-  }
+  await notesSelCtx.editMessageText('Any notes? → No');
+  return { notes: null };
 }
