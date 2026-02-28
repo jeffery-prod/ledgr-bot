@@ -1,38 +1,53 @@
 import { supabase } from './supabase';
+import type { AccountType, Account, ExpenseType, IncomeType } from './types';
 
-export async function getExpenseTypeId(name: string): Promise<string | null> {
+export async function fetchAccountTypes(context: 'expense' | 'income' | 'transfer'): Promise<AccountType[]> {
+  const column = `for_${context}` as const;
   const { data, error } = await supabase
-    .from('expense_types')
-    .select('id')
-    .eq('name', name)
-    .single();
-  if (error) { console.error('getExpenseTypeId error:', error.message); return null; }
-  return data.id;
+    .from('account_types')
+    .select('id, name, display_name, emoji, sort_order')
+    .eq('is_active', true)
+    .eq(column, true)
+    .order('sort_order');
+  if (error) { console.error('fetchAccountTypes error:', error.message); return []; }
+  return data ?? [];
 }
 
-export async function getAccountId(name: string): Promise<string | null> {
+export async function fetchAccountsByType(accountTypeId: string): Promise<Account[]> {
   const { data, error } = await supabase
     .from('accounts')
-    .select('id')
-    .eq('name', name)
-    .single();
-  if (error) { console.error('getAccountId error:', error.message); return null; }
-  return data.id;
+    .select('id, name, display_name, emoji, account_type_id, sort_order')
+    .eq('account_type_id', accountTypeId)
+    .eq('is_active', true)
+    .order('sort_order');
+  if (error) { console.error('fetchAccountsByType error:', error.message); return []; }
+  return data ?? [];
 }
 
-export async function getIncomeTypeId(name: string): Promise<string | null> {
+export async function fetchExpenseTypes(): Promise<ExpenseType[]> {
+  const { data, error } = await supabase
+    .from('expense_types')
+    .select('id, name, display_name, emoji, sort_order')
+    .eq('is_active', true)
+    .order('sort_order');
+  if (error) { console.error('fetchExpenseTypes error:', error.message); return []; }
+  return data ?? [];
+}
+
+export async function fetchIncomeTypes(): Promise<IncomeType[]> {
   const { data, error } = await supabase
     .from('income_types')
-    .select('id')
-    .eq('name', name)
-    .single();
-  if (error) { console.error('getIncomeTypeId error:', error.message); return null; }
-  return data.id;
+    .select('id, name, display_name, emoji, sort_order')
+    .eq('is_active', true)
+    .order('sort_order');
+  if (error) { console.error('fetchIncomeTypes error:', error.message); return []; }
+  return data ?? [];
 }
 
 export async function saveExpense(
   expenseTypeId: string,
   accountId: string,
+  title: string,
   amount: number,
   transactionDate: string,
   notes: string | null
@@ -41,6 +56,7 @@ export async function saveExpense(
   const { error } = await supabase.from('expenses').insert({
     expense_type_id: expenseTypeId,
     account_id: accountId,
+    title,
     amount,
     transaction_date: transactionDate,
     notes,
@@ -54,6 +70,7 @@ export async function saveExpense(
 export async function saveIncome(
   incomeTypeId: string,
   accountId: string,
+  title: string,
   amount: number,
   transactionDate: string,
   notes: string | null
@@ -62,6 +79,7 @@ export async function saveIncome(
   const { error } = await supabase.from('income').insert({
     income_type_id: incomeTypeId,
     account_id: accountId,
+    title,
     amount,
     transaction_date: transactionDate,
     notes,
