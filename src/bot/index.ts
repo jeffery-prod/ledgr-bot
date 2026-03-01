@@ -5,6 +5,8 @@ import type { MyContext } from '../types/context';
 import { addExpense } from '../conversations/addExpense';
 import { addIncome } from '../conversations/addIncome';
 import { addTransfer } from '../conversations/addTransfer';
+import { fetchRecentTransactions } from '../database/queries';
+import { formatDisplayDate, escapeMarkdown } from '../utils/formatDate';
 
 dotenv.config();
 
@@ -18,30 +20,29 @@ bot.use(async (ctx, next) => {
   await next();
 });
 
+bot.catch((err) => {
+  console.error('Bot error:', err.message, err.error);
+  err.ctx.reply('Something went wrong. Please try again.').catch(() => {});
+});
+
 bot.use(conversations());
 bot.use(createConversation(addExpense));
 bot.use(createConversation(addIncome));
 bot.use(createConversation(addTransfer));
 
 const HELP_TEXT = [
-  '*ledgr* — personal finance tracker',
+  '*LedgrB0t* — Personal telegram bot to manage transactions, track budgets, view networth and more\\.',
   '',
-  '*Commands*',
+  '*Transaction Logging*',
   '`/expense`  — Log an expense',
-  '  Select a payment method, category, amount, date, and optional notes\\.',
-  '',
   '`/income`   — Log income',
-  '  Select a destination account, income type, amount, date, and optional notes\\.',
-  '',
   '`/transfer` — Log a transfer between accounts',
-  '  Select a source account, destination account, amount, date, and optional notes\\.',
   '',
+  '*Viewing & History*',
+  '`/recent`   — Show your 10 most recent transactions',
+  '',
+  '*Utilities*',
   '`/help`     — Show this message',
-  '',
-  '*Tips*',
-  '• At any step, tap *❌ Cancel* to exit the flow without saving\\.',
-  '• For the date, you can pick *Today*, *Yesterday*, or enter a custom date in MM/DD/YYYY format\\.',
-  '• Notes are optional — tap *No* to skip\\.',
 ].join('\n');
 
 bot.command('help', async (ctx) => {
@@ -63,10 +64,34 @@ bot.command('transfer', async (ctx) => {
   await ctx.conversation.enter('addTransfer');
 });
 
+bot.command('recent', async (ctx) => {
+  const transactions = await fetchRecentTransactions();
+
+  if (transactions.length === 0) {
+    await ctx.reply('No transactions found.');
+    return;
+  }
+
+  const lines = transactions.map((t, i) => {
+    const date = formatDisplayDate(t.transaction_date);
+    const amount = `\`$${t.amount.toFixed(2)}\``;
+    if (t.type === 'expense') {
+      return `${i + 1}. 🧾 ${escapeMarkdown(t.title ?? 'Untitled')} — ${amount} — ${date}`;
+    }
+    if (t.type === 'income') {
+      return `${i + 1}. 💵 ${escapeMarkdown(t.title ?? 'Untitled')} — ${amount} — ${date}`;
+    }
+    return `${i + 1}. 🔄 ${escapeMarkdown(t.from_label)} → ${escapeMarkdown(t.to_label)} — ${amount} — ${date}`;
+  });
+
+  await ctx.reply(`🕐 *Recent Transactions*\n\n${lines.join('\n')}`, { parse_mode: 'Markdown' });
+});
+
 bot.api.setMyCommands([
   { command: 'expense', description: 'Log an expense' },
   { command: 'income', description: 'Log income' },
   { command: 'transfer', description: 'Log a transfer' },
+  { command: 'recent', description: 'Show 10 most recent transactions' },
   { command: 'help', description: 'Show available commands' },
 ]);
 

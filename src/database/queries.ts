@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { AccountType, Account, ExpenseType, IncomeType } from './types';
+import type { AccountType, Account, ExpenseType, IncomeType, RecentTransaction } from './types';
 
 export async function fetchAccountTypes(context: 'expense' | 'income' | 'transfer'): Promise<AccountType[]> {
   const column = `for_${context}` as const;
@@ -42,6 +42,74 @@ export async function fetchIncomeTypes(): Promise<IncomeType[]> {
     .order('sort_order');
   if (error) { console.error('fetchIncomeTypes error:', error.message); return []; }
   return data ?? [];
+}
+
+export async function fetchRecentTransactions(): Promise<RecentTransaction[]> {
+  const [expensesRes, incomeRes, transfersRes] = await Promise.all([
+    supabase
+      .from('expenses')
+      .select('title, amount, transaction_date, created_at')
+      .order('transaction_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(10),
+    supabase
+      .from('income')
+      .select('title, amount, transaction_date, created_at')
+      .order('transaction_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(10),
+    supabase
+      .from('transfers')
+      .select('amount, transaction_date, created_at, from_account:accounts!from_account_id(name, display_name, emoji), to_account:accounts!to_account_id(name, display_name, emoji)')
+      .order('transaction_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(10),
+  ]);
+
+  if (expensesRes.error) console.error('fetchRecentTransactions expenses error:', expensesRes.error.message);
+  if (incomeRes.error) console.error('fetchRecentTransactions income error:', incomeRes.error.message);
+  if (transfersRes.error) console.error('fetchRecentTransactions transfers error:', transfersRes.error.message);
+
+  const accountLabel = (row: { name: string; display_name: string | null; emoji: string | null }) =>
+    row.emoji ? `${row.emoji} ${row.display_name ?? row.name}` : (row.display_name ?? row.name);
+
+  const expenses: RecentTransaction[] = (expensesRes.data ?? []).map(e => ({
+    type: 'expense' as const,
+    title: e.title,
+    amount: e.amount,
+    transaction_date: e.transaction_date,
+    created_at: e.created_at,
+  }));
+
+  const income: RecentTransaction[] = (incomeRes.data ?? []).map(i => ({
+    type: 'income' as const,
+    title: i.title,
+    amount: i.amount,
+    transaction_date: i.transaction_date,
+    created_at: i.created_at,
+  }));
+
+  const transfers: RecentTransaction[] = (transfersRes.data ?? []).map(t => {
+    type AccountRow = { name: string; display_name: string | null; emoji: string | null };
+    const from = t.from_account as unknown as AccountRow;
+    const to = t.to_account as unknown as AccountRow;
+    return {
+      type: 'transfer' as const,
+      from_label: accountLabel(from),
+      to_label: accountLabel(to),
+      amount: t.amount,
+      transaction_date: t.transaction_date,
+      created_at: t.created_at,
+    };
+  });
+
+  return [...expenses, ...income, ...transfers]
+    .sort((a, b) => {
+      const dateComp = b.transaction_date.localeCompare(a.transaction_date);
+      if (dateComp !== 0) return dateComp;
+      return b.created_at.localeCompare(a.created_at);
+    })
+    .slice(0, 10);
 }
 
 export async function saveExpense(
