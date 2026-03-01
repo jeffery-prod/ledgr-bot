@@ -120,10 +120,7 @@ export async function fetchRecentTransactions(): Promise<RecentTransaction[]> {
     .slice(0, 10);
 }
 
-export async function fetchTodayTransactions(): Promise<RecentTransaction[]> {
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-
+export async function fetchTransactionsByDateRange(from: string, to: string): Promise<RecentTransaction[]> {
   type AccountRow = { name: string; display_name: string | null; emoji: string | null };
   type TypeRow = { display_name: string; emoji: string | null };
 
@@ -137,23 +134,29 @@ export async function fetchTodayTransactions(): Promise<RecentTransaction[]> {
     supabase
       .from('expenses')
       .select('title, amount, transaction_date, created_at, notes, expense_type:expense_types(display_name, emoji), account:accounts(name, display_name, emoji)')
-      .eq('transaction_date', today)
+      .gte('transaction_date', from)
+      .lte('transaction_date', to)
+      .order('transaction_date', { ascending: false })
       .order('created_at', { ascending: false }),
     supabase
       .from('income')
       .select('title, amount, transaction_date, created_at, notes, income_type:income_types(display_name, emoji), account:accounts(name, display_name, emoji)')
-      .eq('transaction_date', today)
+      .gte('transaction_date', from)
+      .lte('transaction_date', to)
+      .order('transaction_date', { ascending: false })
       .order('created_at', { ascending: false }),
     supabase
       .from('transfers')
       .select('amount, transaction_date, created_at, notes, from_account:accounts!from_account_id(name, display_name, emoji), to_account:accounts!to_account_id(name, display_name, emoji)')
-      .eq('transaction_date', today)
+      .gte('transaction_date', from)
+      .lte('transaction_date', to)
+      .order('transaction_date', { ascending: false })
       .order('created_at', { ascending: false }),
   ]);
 
-  if (expensesRes.error) console.error('fetchTodayTransactions expenses error:', expensesRes.error.message);
-  if (incomeRes.error) console.error('fetchTodayTransactions income error:', incomeRes.error.message);
-  if (transfersRes.error) console.error('fetchTodayTransactions transfers error:', transfersRes.error.message);
+  if (expensesRes.error) console.error('fetchTransactionsByDateRange expenses error:', expensesRes.error.message);
+  if (incomeRes.error) console.error('fetchTransactionsByDateRange income error:', incomeRes.error.message);
+  if (transfersRes.error) console.error('fetchTransactionsByDateRange transfers error:', transfersRes.error.message);
 
   const expenses: RecentTransaction[] = (expensesRes.data ?? []).map(e => ({
     type: 'expense' as const,
@@ -188,7 +191,17 @@ export async function fetchTodayTransactions(): Promise<RecentTransaction[]> {
   }));
 
   return [...expenses, ...income, ...transfers]
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    .sort((a, b) => {
+      const dateComp = b.transaction_date.localeCompare(a.transaction_date);
+      if (dateComp !== 0) return dateComp;
+      return b.created_at.localeCompare(a.created_at);
+    });
+}
+
+export async function fetchTodayTransactions(): Promise<RecentTransaction[]> {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return fetchTransactionsByDateRange(today, today);
 }
 
 export async function fetchLastTransaction(): Promise<RecentTransaction | null> {
