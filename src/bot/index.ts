@@ -35,20 +35,21 @@ const HELP_TEXT = [
   '*LedgrB0t* — Personal telegram bot to manage transactions, track budgets, view networth and more\\.',
   '',
   '*Transaction Logging*',
-  '`/expense`  — Log an expense',
-  '`/income`   — Log income',
-  '`/transfer` — Log a transfer between accounts',
+  '/expense — Log an expense',
+  '/income — Log income',
+  '/transfer — Log a transfer between accounts',
   '',
   '*Viewing & History*',
-  '`/last`     — Show the full receipt of the most recent transaction',
-  '`/recent`   — Show your 10 most recent transactions',
-  '`/today`    — Show all transactions logged for today',
-  '`/yesterday` — Show all transactions logged for yesterday',
-  '`/week`     — Show this week\'s transactions grouped by day',
-  '`/past7`    — Show all transactions from the last 7 days',
+  '/last — Show the full receipt of the most recent transaction',
+  '/recent — Show your 10 most recent transactions',
+  '/today — Show all transactions logged for today',
+  '/yesterday — Show all transactions logged for yesterday',
+  '/week — Show this week\'s transactions grouped by day',
+  '/past [n] — Show all transactions from the last N days',
+  '/month — Show this month\'s transactions grouped by day',
   '',
   '*Utilities*',
-  '`/help`     — Show this message',
+  '/help — Show this message',
 ].join('\n');
 
 bot.command('help', async (ctx) => {
@@ -233,17 +234,23 @@ bot.command('week', async (ctx) => {
   await ctx.reply(`📅 *This Week (${rangeLabel})*\n\n${sections.join('\n\n')}\n\n${summary}`, { parse_mode: 'Markdown' });
 });
 
-bot.command('past7', async (ctx) => {
+bot.command('past', async (ctx) => {
+  const days = parseInt(ctx.match ?? '');
+  if (isNaN(days) || days < 1) {
+    await ctx.reply('Usage: /past [number] — e.g. /past 30');
+    return;
+  }
+
   const now = new Date();
   const past = new Date(now);
-  past.setDate(now.getDate() - 6);
+  past.setDate(now.getDate() - (days - 1));
   const todayStr = toLocalDateString(now);
   const pastStr = toLocalDateString(past);
 
   const transactions = await fetchTransactionsByDateRange(pastStr, todayStr);
 
   if (transactions.length === 0) {
-    await ctx.reply('No transactions in the last 7 days.');
+    await ctx.reply(`No transactions in the last ${days} days.`);
     return;
   }
 
@@ -268,7 +275,78 @@ bot.command('past7', async (ctx) => {
     `📊 Net:      \`${netSign}$${Math.abs(net).toFixed(2)}\``,
   ].join('\n');
 
-  await ctx.reply(`🕐 *Past 7 Days*\n\n${lines.join('\n')}${summary}`, { parse_mode: 'Markdown' });
+  await ctx.reply(`🕐 *Past ${days} Days*\n\n${lines.join('\n')}${summary}`, { parse_mode: 'Markdown' });
+});
+
+bot.command('month', async (ctx) => {
+  const now = new Date();
+  let year = now.getFullYear();
+  let month = now.getMonth() + 1;
+
+  const arg = ctx.match?.trim();
+  if (arg) {
+    const parts = arg.split('/');
+    const parsedMonth = parseInt(parts[0]);
+    const parsedYear = parseInt(parts[1]);
+    if (isNaN(parsedMonth) || isNaN(parsedYear) || parsedMonth < 1 || parsedMonth > 12) {
+      await ctx.reply('Usage: /month or /month MM/YYYY — e.g. /month 1/2025');
+      return;
+    }
+    month = parsedMonth;
+    year = parsedYear;
+  }
+
+  const firstDay = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0);
+  const fromStr = toLocalDateString(firstDay);
+  const toStr = toLocalDateString(lastDay);
+
+  const transactions = await fetchTransactionsByDateRange(fromStr, toStr);
+  const monthLabel = firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  if (transactions.length === 0) {
+    await ctx.reply(`No transactions found for ${monthLabel}.`);
+    return;
+  }
+
+  const byDate = new Map<string, typeof transactions>();
+  for (const t of transactions) {
+    if (!byDate.has(t.transaction_date)) byDate.set(t.transaction_date, []);
+    byDate.get(t.transaction_date)!.push(t);
+  }
+
+  const sortedDates = [...byDate.keys()].sort();
+  const sections = sortedDates.map(date => {
+    const dayTxns = byDate.get(date)!;
+    const lines = dayTxns.map((t, i) => {
+      const amount = `\`$${t.amount.toFixed(2)}\``;
+      if (t.type === 'expense') return `${i + 1}. 🧾 ${escapeMarkdown(t.title ?? 'Untitled')} — ${amount}`;
+      if (t.type === 'income') return `${i + 1}. 💵 ${escapeMarkdown(t.title ?? 'Untitled')} — ${amount}`;
+      return `${i + 1}. 🔄 ${escapeMarkdown(t.from_label)} → ${escapeMarkdown(t.to_label)} — ${amount}`;
+    });
+
+    const dayIn = dayTxns.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const dayOut = dayTxns.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const subtotalParts = [];
+    if (dayIn > 0) subtotalParts.push(`💵 \`$${dayIn.toFixed(2)}\``);
+    if (dayOut > 0) subtotalParts.push(`🧾 \`$${dayOut.toFixed(2)}\``);
+
+    return [`*${formatDayHeader(date)}*`, ...lines, subtotalParts.join('  ')].join('\n');
+  });
+
+  const totalIn = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+  const totalOut = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  const net = totalIn - totalOut;
+  const netSign = net >= 0 ? '+' : '-';
+
+  const summary = [
+    '─────────────────',
+    `💵 Income:   \`$${totalIn.toFixed(2)}\``,
+    `🧾 Expenses: \`$${totalOut.toFixed(2)}\``,
+    `📊 Net:      \`${netSign}$${Math.abs(net).toFixed(2)}\``,
+  ].join('\n');
+
+  await ctx.reply(`📅 *${monthLabel}*\n\n${sections.join('\n\n')}\n\n${summary}`, { parse_mode: 'Markdown' });
 });
 
 bot.command('recent', async (ctx) => {
@@ -302,7 +380,8 @@ bot.api.setMyCommands([
   { command: 'today', description: 'Show all transactions logged for today' },
   { command: 'yesterday', description: 'Show all transactions logged for yesterday' },
   { command: 'week', description: "Show this week's transactions grouped by day" },
-  { command: 'past7', description: 'Show all transactions from the last 7 days' },
+  { command: 'past', description: 'Show transactions from the last N days (e.g. /past 30)' },
+  { command: 'month', description: 'Show this month or a specific month (e.g. /month 1/2025)' },
   { command: 'recent', description: 'Show 10 most recent transactions' },
   { command: 'help', description: 'Show available commands' },
 ]);
