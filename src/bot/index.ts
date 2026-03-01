@@ -5,7 +5,7 @@ import type { MyContext } from '../types/context';
 import { addExpense } from '../conversations/addExpense';
 import { addIncome } from '../conversations/addIncome';
 import { addTransfer } from '../conversations/addTransfer';
-import { fetchRecentTransactions, fetchLastTransaction } from '../database/queries';
+import { fetchRecentTransactions, fetchTodayTransactions, fetchLastTransaction } from '../database/queries';
 import { formatDisplayDate, escapeMarkdown } from '../utils/formatDate';
 import { buildMessage } from '../utils/formatMessage';
 
@@ -42,6 +42,7 @@ const HELP_TEXT = [
   '*Viewing & History*',
   '`/last`     — Show the full receipt of the most recent transaction',
   '`/recent`   — Show your 10 most recent transactions',
+  '`/today`    — Show all transactions logged for today',
   '',
   '*Utilities*',
   '`/help`     — Show this message',
@@ -99,6 +100,41 @@ bot.command('last', async (ctx) => {
   }
 });
 
+bot.command('today', async (ctx) => {
+  const transactions = await fetchTodayTransactions();
+
+  if (transactions.length === 0) {
+    await ctx.reply('No transactions logged today.');
+    return;
+  }
+
+  const lines = transactions.map((t, i) => {
+    const amount = `\`$${t.amount.toFixed(2)}\``;
+    if (t.type === 'expense') {
+      return `${i + 1}. 🧾 ${escapeMarkdown(t.title ?? 'Untitled')} — ${amount}`;
+    }
+    if (t.type === 'income') {
+      return `${i + 1}. 💵 ${escapeMarkdown(t.title ?? 'Untitled')} — ${amount}`;
+    }
+    return `${i + 1}. 🔄 ${escapeMarkdown(t.from_label)} → ${escapeMarkdown(t.to_label)} — ${amount}`;
+  });
+
+  const totalIn = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+  const totalOut = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  const net = totalIn - totalOut;
+  const netSign = net >= 0 ? '+' : '-';
+
+  const summary = [
+    '',
+    '─────────────────',
+    `💵 Income:   \`$${totalIn.toFixed(2)}\``,
+    `🧾 Expenses: \`$${totalOut.toFixed(2)}\``,
+    `📊 Net:      \`${netSign}$${Math.abs(net).toFixed(2)}\``,
+  ].join('\n');
+
+  await ctx.reply(`📅 *Today's Transactions*\n\n${lines.join('\n')}${summary}`, { parse_mode: 'Markdown' });
+});
+
 bot.command('recent', async (ctx) => {
   const transactions = await fetchRecentTransactions();
 
@@ -127,6 +163,7 @@ bot.api.setMyCommands([
   { command: 'income', description: 'Log income' },
   { command: 'transfer', description: 'Log a transfer' },
   { command: 'last', description: 'Show the full receipt of the most recent transaction' },
+  { command: 'today', description: 'Show all transactions logged for today' },
   { command: 'recent', description: 'Show 10 most recent transactions' },
   { command: 'help', description: 'Show available commands' },
 ]);
