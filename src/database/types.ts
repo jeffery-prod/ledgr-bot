@@ -37,6 +37,9 @@ export interface RecentExpense {
   amount: number;
   transaction_date: string;
   created_at: string;
+  notes: string | null;
+  account_label: string;
+  category_label: string;
 }
 
 export interface RecentIncome {
@@ -45,15 +48,19 @@ export interface RecentIncome {
   amount: number;
   transaction_date: string;
   created_at: string;
+  notes: string | null;
+  account_label: string;
+  income_type_label: string;
 }
 
 export interface RecentTransfer {
   type: 'transfer';
-  from_label: string;
-  to_label: string;
   amount: number;
   transaction_date: string;
   created_at: string;
+  notes: string | null;
+  from_label: string;
+  to_label: string;
 }
 
 export type RecentTransaction = RecentExpense | RecentIncome | RecentTransfer;
