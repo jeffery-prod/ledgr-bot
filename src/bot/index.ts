@@ -44,7 +44,7 @@ const HELP_TEXT = [
   '`/recent`   — Show your 10 most recent transactions',
   '`/today`    — Show all transactions logged for today',
   '`/yesterday` — Show all transactions logged for yesterday',
-  '`/weekly`   — Show this week\'s transactions grouped by day',
+  '`/week`     — Show this week\'s transactions grouped by day',
   '`/past7`    — Show all transactions from the last 7 days',
   '',
   '*Utilities*',
@@ -175,7 +175,7 @@ bot.command('yesterday', async (ctx) => {
   await ctx.reply(`${header}\n\n${lines.join('\n')}${summary}`, { parse_mode: 'Markdown' });
 });
 
-bot.command('weekly', async (ctx) => {
+bot.command('week', async (ctx) => {
   const now = new Date();
   const sunday = new Date(now);
   sunday.setDate(now.getDate() - now.getDay());
@@ -301,7 +301,7 @@ bot.api.setMyCommands([
   { command: 'last', description: 'Show the full receipt of the most recent transaction' },
   { command: 'today', description: 'Show all transactions logged for today' },
   { command: 'yesterday', description: 'Show all transactions logged for yesterday' },
-  { command: 'weekly', description: "Show this week's transactions grouped by day" },
+  { command: 'week', description: "Show this week's transactions grouped by day" },
   { command: 'past7', description: 'Show all transactions from the last 7 days' },
   { command: 'recent', description: 'Show 10 most recent transactions' },
   { command: 'help', description: 'Show available commands' },
