@@ -358,3 +358,34 @@ export async function saveTransfer(
   if (error) { console.error('saveTransfer error:', error.message); return false; }
   return true;
 }
+
+export async function fetchStatus(): Promise<{ connected: boolean; totalTransactions: number; lastDate: string | null }> {
+  const [expenseRes, incomeRes, transferRes, lastTxn] = await Promise.all([
+    supabase.from('expenses').select('*', { count: 'exact', head: true }),
+    supabase.from('income').select('*', { count: 'exact', head: true }),
+    supabase.from('transfers').select('*', { count: 'exact', head: true }),
+    fetchLastTransaction(),
+  ]);
+
+  const connected = !expenseRes.error && !incomeRes.error && !transferRes.error;
+  const totalTransactions = (expenseRes.count ?? 0) + (incomeRes.count ?? 0) + (transferRes.count ?? 0);
+
+  return { connected, totalTransactions, lastDate: lastTxn?.transaction_date ?? null };
+}
+
+export async function fetchAllAccounts(): Promise<{ type: AccountType; accounts: Account[] }[]> {
+  const [typesRes, accountsRes] = await Promise.all([
+    supabase.from('account_types').select('id, name, display_name, emoji, sort_order').eq('is_active', true).order('sort_order'),
+    supabase.from('accounts').select('id, name, display_name, emoji, account_type_id, sort_order').eq('is_active', true).order('sort_order'),
+  ]);
+
+  if (typesRes.error) console.error('fetchAllAccounts types error:', typesRes.error.message);
+  if (accountsRes.error) console.error('fetchAllAccounts accounts error:', accountsRes.error.message);
+
+  const types = typesRes.data ?? [];
+  const accounts = accountsRes.data ?? [];
+
+  return types
+    .map(type => ({ type, accounts: accounts.filter(a => a.account_type_id === type.id) }))
+    .filter(g => g.accounts.length > 0);
+}
