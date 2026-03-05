@@ -5,8 +5,8 @@ import type { MyContext } from '../types/context';
 import { addExpense } from '../conversations/addExpense';
 import { addIncome } from '../conversations/addIncome';
 import { addTransfer } from '../conversations/addTransfer';
-import { fetchRecentTransactions, fetchTodayTransactions, fetchTransactionsByDateRange, fetchLastTransaction } from '../database/queries';
-import { formatDisplayDate, toLocalDateString, formatDayHeader, escapeMarkdown } from '../utils/formatDate';
+import { fetchRecentTransactions, fetchTodayTransactions, fetchTransactionsByDateRange, fetchLastTransaction, fetchStatus, fetchAllAccounts, fetchExpenseTypes, fetchIncomeTypes } from '../database/queries';
+import { formatDisplayDate, formatLoggedAt, toLocalDateString, formatDayHeader, escapeMarkdown } from '../utils/formatDate';
 import { buildMessage } from '../utils/formatMessage';
 
 dotenv.config();
@@ -49,6 +49,9 @@ const HELP_TEXT = [
   '/month — Show this month\'s transactions grouped by day',
   '',
   '*Utilities*',
+  '/status — Bot and database status',
+  '/accounts — List all configured accounts',
+  '/categories — List all expense categories and income types',
   '/help — Show this message',
 ].join('\n');
 
@@ -372,6 +375,64 @@ bot.command('recent', async (ctx) => {
   await ctx.reply(`🕐 *Recent Transactions*\n\n${lines.join('\n')}`, { parse_mode: 'Markdown' });
 });
 
+bot.command('status', async (ctx) => {
+  const { connected, totalTransactions, lastDate } = await fetchStatus();
+  const lastDateStr = lastDate ? formatDisplayDate(lastDate) : 'None';
+
+  const lines = [
+    `${connected ? '✅' : '❌'} Supabase ${connected ? 'connected' : 'unreachable'}`,
+    `📊 Total transactions: \`${totalTransactions}\``,
+    `📅 Last transaction: ${lastDateStr}`,
+    `🕐 Current time: ${formatLoggedAt()}`,
+  ].join('\n');
+
+  await ctx.reply(`🤖 *LedgrB0t Status*\n\n${lines}`, { parse_mode: 'Markdown' });
+});
+
+bot.command('accounts', async (ctx) => {
+  const groups = await fetchAllAccounts();
+
+  if (groups.length === 0) {
+    await ctx.reply('No accounts configured.');
+    return;
+  }
+
+  const sections = groups.map(g => {
+    const typeLabel = g.type.emoji ? `${g.type.emoji} ${g.type.display_name}` : g.type.display_name;
+    const accountLines = g.accounts.map(a => {
+      const label = a.emoji ? `${a.emoji} ${a.display_name ?? a.name}` : (a.display_name ?? a.name);
+      return `  • ${escapeMarkdown(label)}`;
+    });
+    return [`*${escapeMarkdown(typeLabel)}*`, ...accountLines].join('\n');
+  });
+
+  await ctx.reply(`🏦 *Accounts*\n\n${sections.join('\n\n')}`, { parse_mode: 'Markdown' });
+});
+
+bot.command('categories', async (ctx) => {
+  const [expenseTypes, incomeTypes] = await Promise.all([fetchExpenseTypes(), fetchIncomeTypes()]);
+
+  const expenseLines = expenseTypes.map(t => {
+    const label = t.emoji ? `${t.emoji} ${t.display_name}` : t.display_name;
+    return `  • ${escapeMarkdown(label)}`;
+  });
+
+  const incomeLines = incomeTypes.map(t => {
+    const label = t.emoji ? `${t.emoji} ${t.display_name}` : t.display_name;
+    return `  • ${escapeMarkdown(label)}`;
+  });
+
+  const body = [
+    '*🧾 Expense Categories*',
+    ...expenseLines,
+    '',
+    '*💵 Income Types*',
+    ...incomeLines,
+  ].join('\n');
+
+  await ctx.reply(`📂 *Categories*\n\n${body}`, { parse_mode: 'Markdown' });
+});
+
 bot.api.setMyCommands([
   { command: 'expense', description: 'Log an expense' },
   { command: 'income', description: 'Log income' },
@@ -383,6 +444,9 @@ bot.api.setMyCommands([
   { command: 'past', description: 'Show transactions from the last N days (e.g. /past 30)' },
   { command: 'month', description: 'Show this month or a specific month (e.g. /month 1/2025)' },
   { command: 'recent', description: 'Show 10 most recent transactions' },
+  { command: 'status', description: 'Bot and database status' },
+  { command: 'accounts', description: 'List all configured accounts' },
+  { command: 'categories', description: 'List all expense categories and income types' },
   { command: 'help', description: 'Show available commands' },
 ]);
 
